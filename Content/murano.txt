@@ -1,0 +1,251 @@
+===============================================
+MURANO ON LIBERTY RDO
+===============================================
+
+Based on:
+http://egonzalez.org/murano-in-rdo-openstack-manual-installation
+https://access.redhat.com/solutions/1489563
+http://murano.readthedocs.io/en/latest/index.html
+http://docs.openstack.org/developer/murano/install/manual.html
+
+On the controller node, install some pre requisites
+# yum install -y gcc python-setuptools python-devel git postgresql-devel libffi-devel openssl-devel
+# easy_install pip
+# pip install tox
+# pip install --upgrade six
+
+Create a database for murano
+# mysql -u root
+> CREATE DATABASE murano;
+
+Create murano user at MySQL
+> GRANT ALL PRIVILEGES ON murano.* TO 'murano'@'localhost' IDENTIFIED BY 'murano123';
+> GRANT ALL PRIVILEGES ON murano.* TO 'murano'@'%' IDENTIFIED BY 'murano123';
+> exit
+
+Clone murano from liberty/stable branch
+# git clone -b stable/liberty git://git.openstack.org/openstack/murano
+
+Install all requirements
+# cd ~/murano/
+# pip install -r requirements.txt
+
+Install murano
+# python setup.py install
+
+Create sample configuration file
+# oslo-config-generator --config-file etc/oslo-config-generator/murano.conf
+
+Create murano user
+# sudo adduser murano -s /sbin/nologin
+
+Create murano directory and copy the sample content on it
+# mkdir /etc/murano
+# cp ~/murano/etc/murano/* /etc/murano/
+
+Rename sample configuration to murano.conf
+# mv /etc/murano/murano.conf.sample /etc/murano/murano.conf
+
+Change ownership
+# chown murano:murano /etc/murano/*
+# ll /etc/murano
+total 104
+-rw-r--r--. 1 murano murano  1629 Apr 30 18:29 logging.conf.sample
+-rw-r--r--. 1 murano murano 37905 May  1 14:03 murano.conf
+-rw-r--r--. 1 murano murano 44176 Apr 30 18:29 murano.conf.orig
+-rw-r--r--. 1 murano murano  1248 Apr 30 18:29 murano-paste.ini
+-rw-r--r--. 1 murano murano   184 Apr 30 18:29 netconfig.yaml.sample
+-rw-r--r--. 1 murano murano  1089 Apr 30 18:29 policy.json
+-rw-r--r--. 1 murano murano   128 Apr 30 18:29 README-murano.conf.txt
+# ll /etc | grep murano
+drwxr-xr-x.  2 root     root       4096 May  1 17:54 murano
+
+Configure murano.conf
+
+# vi /etc/murano/murano.conf
+
+[DEFAULT]
+bind_host = 0.0.0.0
+bind_port = 8082
+debug = true
+verbose = true
+log_file = murano.log
+log_dir = /var/log/murano
+
+[oslo_messaging_rabbit]
+rabbit_host=RABBITMQ_IP
+rabbit_port=5672
+rabbit_hosts=RABBITMQ_IP:5672
+rabbit_use_ssl=False
+rabbit_userid=guest
+rabbit_password=guest
+rabbit_virtual_host=/
+rabbit_ha_queues=False
+rabbit_notification_exchange=openstack
+rabbit_notification_topic=notifications
+
+[database]
+connection = mysql://murano:murano123@MYSQL_IP/murano
+backend = sqlalchemy
+
+[keystone_authtoken]
+auth_uri=http://KEYSTONE_IP:5000/v2.0
+identity_uri=http://KEYSTONE_IP:35357
+admin_user=murano
+admin_password=murano123
+admin_tenant_name=services
+
+[murano]
+url = http://MURANO_IP:8082
+
+[rabbitmq]
+host=RABBITMQ_IP
+login=guest
+password=guest
+virtual_host=/
+
+[networking]
+external_network = external-flat-network # name of external network
+router_name = gateway # name of the gateway
+create_router = true
+
+
+Configure keystone 
+# source keystonerc_admin
+[root@controller ~(admin)]# openstack user create --password murano123 murano
+[root@controller ~(admin)]# openstack user create --password murano123 murano
+[root@controller ~(admin)]# openstack role add --project services --user murano admin
+[root@controller ~(admin)]# openstack service create --name muranoapi --description "Murano Project" application-catalog
+[root@controller ~(admin)]# openstack service list
+[root@controller ~(admin)]# openstack endpoint create \
+--region RegionOne \
+--publicurl 'http://MURANO_IP:8082' \
+--adminurl 'http://MURANO_IP:8082' \
+--internalurl 'http://http://MURANO_IP:8082' \
+MURANO_SERVICE_ID
+
+Sync the database
+# murano-db-manage --config-file /etc/murano/murano.conf upgrade
+
+Create the log directory of the murano daemons 
+# mkdir /var/log/murano
+# touch /var/log/murano/murano.log
+# chown murano:murano /var/log/murano/*
+# chown murano:murano /var/log/murano
+# ll /var/log/murano/
+-rw-r--r--. 1 murano murano 5533524 May  1 18:58 murano.log
+# ll /var/log | grep murano
+drwx--x---. 2 murano     murano         23 May  1 10:45 murano
+
+Create and start the murano services daemons
+# vi /usr/lib/systemd/system/murano-engine.service
+
+[Unit]
+Description=Murano Server
+After=syslog.target network.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+TimeoutStartSec=0
+Restart=always
+User=murano
+ExecStart=/usr/bin/murano-engine --config-file /etc/murano/murano.conf
+
+[Install]
+WantedBy=multi-user.target
+
+# vi /usr/lib/systemd/system/murano-api.service
+
+[Unit]
+Description=Murano API Server
+After=syslog.target network.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+TimeoutStartSec=0
+Restart=always
+User=murano
+ExecStart=/usr/bin/murano-api --config-file /etc/murano/murano.conf
+
+[Install]
+WantedBy=multi-user.target
+
+# systemctl start murano-engine.service
+# systemctl start murano-api.service
+# systemctl enable murano-engine.service
+# systemctl enable murano-api.service
+
+
+Configure the murano dashboard plugin for horizon
+# git clone -b stable/liberty git://git.openstack.org/openstack/murano-dashboard
+# cd ~/murano-dashboard
+# pip install -r requirements.txt
+
+Install murano-dashboard module
+# python setup.py install
+
+Enable murano-dashboard at horizon
+# cp muranodashboard/local/_50_murano.py /usr/share/openstack-dashboard/openstack_dashboard/enabled/
+
+Restart apache to apply changes
+# systemctl restart httpd
+
+
+Make the tenant user an heat stack owner
+# source keystonerc_admin
+[root@controller ~(admin)]# keystone user-role-add --user bcloud --role heat_stack_owner --tenant bcloud
+
+Login as a tenant user, e.g. bcloud, and add a murano package
+# source keystonerc_bcloud
+[root@controller ~(bcloud)]# murano --murano-repo-url="http://storage.apps.openstack.org/" \
+package-import io.murano.apps.apache.ApacheHttpServer
+
+This will add a Debian image to glance image service, wait until the image is in active status
+[root@controller ~(bcloud)]# glance image-list
+
+Create a file with the following content, modify the variables with your own needs
+# vi object_model_patch.json
+[
+    { "op": "add", "path": "/-", "value":
+        {
+            "instance": {
+                "availabilityZone": "AZ01",
+                "name": "Apache",
+                "image": "IMAGE_ID",
+                "keyname": "bcloud",
+                "flavor": "m1.small",
+                "assignFloatingIp": true,
+                "?": {
+                    "type": "io.murano.resources.LinuxMuranoInstance",
+                    "id": "===id1==="
+                }
+            },
+            "name": "ApacheHttpServer",
+            "enablePHP": false,
+            "?": {
+                "type": "io.murano.apps.apache.ApacheHttpServer",
+                "id": "===id2==="
+            }
+        }
+    }
+]
+
+Create an environment
+[root@controller ~(bcloud)]# murano environment-create --join-subnet-id SUBNET_ID ENVIRONMENT_NAME
+
+Create a session for temporal working on the environment
+[root@controller ~(bcloud)]# murano environment-session-create ENVIRONMENT_ID
+
+Add the file with the apps configuration
+[root@controller ~(bcloud)]# murano environment-apps-edit --session-id SESSION_ID ENVIRONMENT_ID FILE_NAME
+
+Deploy the environment
+[root@controller ~(bcloud)]# murano environment-deploy ENVIRONMENT_ID --session-id SESSION_ID
+
+Check the deploying
+[root@controller ~(bcloud)]# murano environment-show ENVIRONMENT_ID
+
+And the instance created
+[root@controller ~(bcloud)]# nova list

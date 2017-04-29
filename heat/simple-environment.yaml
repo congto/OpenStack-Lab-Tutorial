@@ -1,0 +1,8 @@
+# Simple envinroment file
+resource_registry:
+  OS::Application::WebServer: ./webserver.yaml
+  OS::Application::DataBase: ./database.yaml
+
+parameter_defaults:
+  image: ubuntu
+

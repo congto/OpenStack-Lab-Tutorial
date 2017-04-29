@@ -1,0 +1,70 @@
+heat_template_version: 2015-10-15
+description: Nested template to deploy a webserver and a db with an attached volume
+
+parameters:
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    constraints:
+    - allowed_values: [cirros, centos, ubuntu]
+    default: cirros
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of flavor to be used
+    constraints:
+    - allowed_values: [small, medium, large]
+    default: small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: demokey
+  private_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach instance to.
+  volume_size:
+    type: string
+    label: size of volume
+    description: This is the size of the Volume
+    default: 3
+
+resources:
+  web:
+    type: ./webserver.yaml
+    properties:
+      server_image: { get_param: image }
+      server_flavor: { get_param: flavor }
+      server_key: { get_param: key }
+      server_network: { get_param: private_network }
+
+  db:
+    type: ./database.yaml
+    properties:
+      server_image: { get_param: image }
+      server_flavor: { get_param: flavor }
+      server_key: { get_param: key }
+      server_network: { get_param: private_network }
+      volume_size: { get_param: volume_size }
+
+outputs:
+ web_instance_name:
+   description: Name of the web instance
+   value: { get_attr: [web, server_name] }
+ web_instance_ip:
+   description: IP address of the web instance
+   value: { get_attr: [web, server_address] }
+ db_instance_name:
+   description: Name of the db instance
+   value: { get_attr: [db, server_name] }
+ db_instance_ip:
+   description: IP address of the db instance
+   value: { get_attr: [db, server_address] }
+ volume_name:
+   description: Volume name attached to the db instance
+   value: { get_attr: [db, volume_name] }
+ volume_type:
+   description: Volume type attached to the db instance
+   value: { get_attr: [db, volume_type] }

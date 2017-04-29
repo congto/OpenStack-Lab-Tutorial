@@ -1,0 +1,42 @@
+heat_template_version: 2015-10-15
+description: Simple template (improved) to deploy a compute instance
+
+parameters:
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of flavor to be used
+    constraints:
+    - allowed_values: [small, medium, large]
+    default: small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+  private_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach instance to.
+    default: tenant-network
+
+resources:
+  my_instance:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      key_name: { get_param: key }
+      flavor: { get_param: flavor }
+      networks:
+        - network: { get_param: private_network }
+
+outputs:
+ instance_name:
+   description: Name of the instance
+   value: { get_attr: [my_instance, name] }
+ instance_ip:
+   description: IP address of the instance
+   value: { get_attr: [my_instance, first_address] }

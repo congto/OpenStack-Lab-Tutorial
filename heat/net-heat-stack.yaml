@@ -1,0 +1,87 @@
+heat_template_version: 2015-10-15
+description: Template to deploy an instance with floating IP on the external network
+
+parameters:
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    constraints:
+    - allowed_values: [cirros, centos, ubuntu]
+    default: cirros
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of flavor to be used
+    constraints:
+    - allowed_values: [small, medium, large]
+    default: small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: demokey
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Public network with floating IP addresses.
+    default: provider-network
+
+resources:
+
+  private_network:
+    type: OS::Neutron::Net
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_network }
+      cidr: 192.168.100.0/24
+      dns_nameservers:
+        - 8.8.8.8
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_network }
+
+  router-interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: private_subnet }
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  my_instance:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      key_name: { get_param: key }
+      flavor: { get_param: flavor }
+      networks:
+        - network: { get_resource: private_network }
+
+  floating_ip_assoc:
+    type: OS::Nova::FloatingIPAssociation
+    properties:
+      floating_ip: { get_resource: floating_ip }
+      server_id: { get_resource: my_instance }
+
+outputs:
+ instance_name:
+   description: Name of the instance
+   value: { get_attr: [my_instance, name] }
+ instance_ip:
+   description: IP address of the instance
+   value: { get_attr: [my_instance, first_address] }
+ floating_ip:
+   description: Floating IP address assigned to the instance
+   value: { get_attr: [floating_ip, floating_ip_address] }
+ private_network:
+   description: Private network name assigned to the instance
+   value: { get_attr: [private_network, name] }

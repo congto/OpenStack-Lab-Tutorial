@@ -1,0 +1,77 @@
+heat_template_version: 2015-10-15
+description: template to deploy a cluster of webserver with manual scaling
+
+parameters:
+  cluster_size:
+    type: number
+    label: Cluster size
+    description: Number of webserver instances in the cluster.
+    default: 2
+  public_network:
+    type: string
+    label: Public network name
+    description: Network for floating IP
+    default: provider-network
+  private_network:
+    type: string
+    label: Private network name
+    description: Network to attach the instance
+    default: tenant-network
+  private_subnet:
+    type: string
+    label: Private subnetwork name
+    description: Subnet name
+    default: tenant-subnetwork
+
+resources:
+  cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: cluster_size }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          image: ubuntu
+          #image: cirros
+          flavor: small
+          key_name: demokey
+          networks:
+            - network: { get_param: private_network }
+          user_data: |
+            #!/bin/bash
+            apt-get install apache2 -y
+            echo "Hello "$(hostname -I)"!" > /var/www/html/index.html
+
+  loadbalancer:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      members: { get_attr: [cluster, refs] }
+      pool_id: { get_resource: pool }
+      protocol_port: { get_attr: [pool, vip, protocol_port] }
+
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      lb_method: ROUND_ROBIN
+      protocol: HTTP
+      subnet: { get_param: private_subnet }
+      vip: { "protocol_port": 80 }
+
+  vip_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_network }
+
+  vip_floating_association:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: vip_floating_ip }
+      port_id: { get_attr: [ pool, vip, port_id ] }
+      fixed_ip_address: { get_attr: [ pool, vip, address ] }
+
+outputs:
+ floating_ip:
+   description: Floating IP address assigned to the instance
+   value: { get_attr: [vip_floating_ip, floating_ip_address] }
+
+

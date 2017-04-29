@@ -1,0 +1,84 @@
+heat_template_version: 2015-10-15
+
+description: Template to deploy two compute instance with a volume attached
+
+parameters:
+
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    constraints:
+    - allowed_values: [cirros, centos, ubuntu]
+    default: cirros
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of flavor to be used
+    constraints:
+    - allowed_values: [small, medium, large]
+    default: small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: demokey
+  private_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach instance to.
+  volume_size:
+    type: string
+    label: size of volume
+    description: This is the size of the Volume
+    default: 3
+
+resources:
+  my_web:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - network: { get_param: private_network }
+
+  my_db:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - network: { get_param: private_network }
+
+  my_vol:
+   type: OS::Cinder::Volume
+   properties:
+      size: { get_param: volume_size }
+
+  vol_attachment:
+   type: OS::Cinder::VolumeAttachment
+   properties:
+      instance_uuid: { get_resource: my_db }
+      volume_id: { get_resource: my_vol }
+
+outputs:
+ web_instance_name:
+   description: Name of the web instance
+   value: { get_attr: [my_web, name] }
+ web_instance_ip:
+   description: IP address of the web instance
+   value: { get_attr: [my_web, first_address] }
+ db_instance_name:
+   description: Name of the db instance
+   value: { get_attr: [my_db, name] }
+ db_instance_ip:
+   description: IP address of the db instance
+   value: { get_attr: [my_db, first_address] }
+ volume_name:
+   description: Volume name attached to the db instance
+   value: { get_attr: [my_vol, display_name] }
+ volume_type:
+   description: Volume type attached to the db instance
+   value: { get_attr: [my_vol, volume_type] }

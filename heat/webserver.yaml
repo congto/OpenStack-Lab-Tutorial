@@ -1,0 +1,40 @@
+heat_template_version: 2015-10-15
+description: template to create a server instance
+
+parameters:
+  server_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+  server_flavor:
+    type: string
+    label: Flavor
+    description: Type of flavor to be used
+  server_key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+  server_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach instance to.
+
+resources:
+  server:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: server_image }
+      flavor: { get_param: server_flavor }
+      key_name: { get_param: server_key }
+      networks:
+        - network: { get_param: server_network }
+
+outputs:
+ server_name:
+   description: Name of the server instance
+   value: { get_attr: [server, name] }
+ server_address:
+   description: IP address of the server instance
+   value: { get_attr: [server, first_address] }
+
+
